@@ -1,4 +1,4 @@
-export const BUILD = '0729-f';
+export const BUILD = '0729-g';
 
 const CSS = `
 .hud, .hud * { box-sizing: border-box; }
@@ -323,6 +323,8 @@ const CSS = `
   padding: 0 clamp(40px, 7vw, 110px) clamp(28px, 5vh, 54px);
 }
 .hud .lobby .hint { font-size: 11px; letter-spacing: .16em; opacity: .38; font-weight: 400; }
+.hud .lobby .warn { font-size: 12px; letter-spacing: .1em; color: #ffb04a; margin-top: 6px; opacity: 0; transition: opacity .2s; }
+.hud .lobby .warn.on { opacity: 1; }
 .hud .lobby .acts { display: flex; gap: 12px; }
 .hud .lobby .acts button {
   font: 700 14px/1 inherit; letter-spacing: .16em; padding: 15px 32px;
@@ -533,7 +535,10 @@ export class UI {
           </div>
         </div>
         <div class="lfoot">
-          <div class="hint">空位可以「換到這裡」或「＋ 電腦」 · 電腦可移除 · 一個人也能開始</div>
+          <div>
+            <div class="hint">空位可以「換到這裡」或「＋ 電腦」 · 「換到這裡」是把你自己換過去</div>
+            <div class="warn" data-warn></div>
+          </div>
           <div class="acts">
             <button data-back>返回</button>
             <button class="primary" data-start>開始遊戲</button>
@@ -578,7 +583,7 @@ export class UI {
       lobby: q('lobby'), name: q('name'), roomName: q('roomname'),
       browse: q('browse'), rooms: q('rooms'), browseSub: q('browsesub'),
       btnRefresh: root.querySelector('[data-refresh]'), btnBBack: root.querySelector('[data-bback]'),
-      slots: { ct: q('slots-ct'), t: q('slots-t') }, maps: q('maps'), netdot: q('netdot'),
+      slots: { ct: q('slots-ct'), t: q('slots-t') }, maps: q('maps'), netdot: q('netdot'), warn: q('warn'),
       btnStart: root.querySelector('[data-start]'), btnBack: root.querySelector('[data-back]'),
       btnNew: root.querySelector('[data-new]'), btnFind: root.querySelector('[data-find]'),
     };
@@ -704,6 +709,12 @@ export class UI {
   }
 
   renderLobby(model) {
+    const count = (t) => model.roster[t].filter(Boolean).length;
+    const warn = count('ct') === 0 || count('t') === 0;
+    this.el.warn.textContent = warn
+      ? `⚠ ${count('ct') === 0 ? '反恐部隊' : '恐怖分子'}沒有任何人，開始後不會有對手`
+      : '';
+    this.el.warn.classList.toggle('on', warn);
     this.el.netdot.textContent = `${model.online ? '● 已連線' : '● 離線模式（只能單機）'} · build ${BUILD}`;
     this.el.netdot.className = `netdot ${model.online ? 'on' : 'off'}`;
     [...this.el.maps.children].forEach((b, i) => {

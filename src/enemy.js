@@ -119,7 +119,8 @@ export class Enemy {
 
     const target = this.pickTarget(dt, world);
     if (!target) {
-      this.moving += (0 - this.moving) * Math.min(1, dt * 6);
+      // 沒有敵人時巡邏，不要站著發呆。全部人同一隊時整場僵住看起來就像壞掉。
+      this.patrol(dt);
       return;
     }
 
@@ -196,6 +197,34 @@ export class Enemy {
         onShoot(this, target, dir, dist);
       }
     }
+  }
+
+  patrol(dt) {
+    this.moving += (1 - this.moving) * Math.min(1, dt * 6);
+    this.patrolTimer = (this.patrolTimer || 0) - dt;
+    if (!this.patrolGoal || this.patrolTimer <= 0) {
+      this.patrolGoal = randomSpawn(null, 0);
+      this.patrolTimer = 8 + Math.random() * 6;
+      this.path = null;
+    }
+    const before = [this.pos[0], this.pos[2]];
+    const flat = this.steerAlongPath(dt, this.patrolGoal);
+    if (flat) {
+      moveWithStep(
+        this.pos, 0.4, ENEMY_SIZE[1],
+        this.pos[0] + flat[0] * SPEED * 0.75 * dt,
+        this.pos[2] + flat[2] * SPEED * 0.75 * dt
+      );
+      const want = Math.atan2(flat[0], flat[2]);
+      let diff = want - this.yaw;
+      while (diff > Math.PI) diff -= 6.283185;
+      while (diff < -Math.PI) diff += 6.283185;
+      this.yaw += diff * Math.min(1, dt * 3);
+    }
+    this.pos[1] = groundHeight(this.pos, 0.4, this.pos[1] + STEP_HEIGHT);
+    const moved = Math.hypot(this.pos[0] - before[0], this.pos[2] - before[1]);
+    this.phase += moved * 5.2;
+    if (moved < SPEED * dt * 0.2) this.patrolTimer = 0;
   }
 
   steerAlongPath(dt, goal) {

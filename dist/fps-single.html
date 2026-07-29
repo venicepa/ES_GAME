@@ -2111,7 +2111,8 @@ class Enemy {
 
     const target = this.pickTarget(dt, world);
     if (!target) {
-      this.moving += (0 - this.moving) * Math.min(1, dt * 6);
+      // 沒有敵人時巡邏，不要站著發呆。全部人同一隊時整場僵住看起來就像壞掉。
+      this.patrol(dt);
       return;
     }
 
@@ -2188,6 +2189,34 @@ class Enemy {
         onShoot(this, target, dir, dist);
       }
     }
+  }
+
+  patrol(dt) {
+    this.moving += (1 - this.moving) * Math.min(1, dt * 6);
+    this.patrolTimer = (this.patrolTimer || 0) - dt;
+    if (!this.patrolGoal || this.patrolTimer <= 0) {
+      this.patrolGoal = randomSpawn(null, 0);
+      this.patrolTimer = 8 + Math.random() * 6;
+      this.path = null;
+    }
+    const before = [this.pos[0], this.pos[2]];
+    const flat = this.steerAlongPath(dt, this.patrolGoal);
+    if (flat) {
+      moveWithStep(
+        this.pos, 0.4, ENEMY_SIZE[1],
+        this.pos[0] + flat[0] * SPEED * 0.75 * dt,
+        this.pos[2] + flat[2] * SPEED * 0.75 * dt
+      );
+      const want = Math.atan2(flat[0], flat[2]);
+      let diff = want - this.yaw;
+      while (diff > Math.PI) diff -= 6.283185;
+      while (diff < -Math.PI) diff += 6.283185;
+      this.yaw += diff * Math.min(1, dt * 3);
+    }
+    this.pos[1] = groundHeight(this.pos, 0.4, this.pos[1] + STEP_HEIGHT);
+    const moved = Math.hypot(this.pos[0] - before[0], this.pos[2] - before[1]);
+    this.phase += moved * 5.2;
+    if (moved < SPEED * dt * 0.2) this.patrolTimer = 0;
   }
 
   steerAlongPath(dt, goal) {
@@ -2305,7 +2334,7 @@ function createBots(roster, avoid) {
   return list;
 }
 
-const BUILD = '0729-f';
+const BUILD = '0729-g';
 
 const CSS = `
 .hud, .hud * { box-sizing: border-box; }
@@ -2630,6 +2659,8 @@ const CSS = `
   padding: 0 clamp(40px, 7vw, 110px) clamp(28px, 5vh, 54px);
 }
 .hud .lobby .hint { font-size: 11px; letter-spacing: .16em; opacity: .38; font-weight: 400; }
+.hud .lobby .warn { font-size: 12px; letter-spacing: .1em; color: #ffb04a; margin-top: 6px; opacity: 0; transition: opacity .2s; }
+.hud .lobby .warn.on { opacity: 1; }
 .hud .lobby .acts { display: flex; gap: 12px; }
 .hud .lobby .acts button {
   font: 700 14px/1 inherit; letter-spacing: .16em; padding: 15px 32px;
@@ -2840,7 +2871,10 @@ class UI {
           </div>
         </div>
         <div class="lfoot">
-          <div class="hint">空位可以「換到這裡」或「＋ 電腦」 · 電腦可移除 · 一個人也能開始</div>
+          <div>
+            <div class="hint">空位可以「換到這裡」或「＋ 電腦」 · 「換到這裡」是把你自己換過去</div>
+            <div class="warn" data-warn></div>
+          </div>
           <div class="acts">
             <button data-back>返回</button>
             <button class="primary" data-start>開始遊戲</button>
@@ -2885,7 +2919,7 @@ class UI {
       lobby: q('lobby'), name: q('name'), roomName: q('roomname'),
       browse: q('browse'), rooms: q('rooms'), browseSub: q('browsesub'),
       btnRefresh: root.querySelector('[data-refresh]'), btnBBack: root.querySelector('[data-bback]'),
-      slots: { ct: q('slots-ct'), t: q('slots-t') }, maps: q('maps'), netdot: q('netdot'),
+      slots: { ct: q('slots-ct'), t: q('slots-t') }, maps: q('maps'), netdot: q('netdot'), warn: q('warn'),
       btnStart: root.querySelector('[data-start]'), btnBack: root.querySelector('[data-back]'),
       btnNew: root.querySelector('[data-new]'), btnFind: root.querySelector('[data-find]'),
     };
@@ -3011,6 +3045,12 @@ class UI {
   }
 
   renderLobby(model) {
+    const count = (t) => model.roster[t].filter(Boolean).length;
+    const warn = count('ct') === 0 || count('t') === 0;
+    this.el.warn.textContent = warn
+      ? `⚠ ${count('ct') === 0 ? '反恐部隊' : '恐怖分子'}沒有任何人，開始後不會有對手`
+      : '';
+    this.el.warn.classList.toggle('on', warn);
     this.el.netdot.textContent = `${model.online ? '● 已連線' : '● 離線模式（只能單機）'} · build ${BUILD}`;
     this.el.netdot.className = `netdot ${model.online ? 'on' : 'off'}`;
     [...this.el.maps.children].forEach((b, i) => {
