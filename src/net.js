@@ -1,5 +1,5 @@
 // 大廳連線。連得上就用伺服器的房間，連不上自動退回本機房間（離線模式）。
-import * as local from './rooms.js';
+import { listLocalRooms } from './rooms.js';
 
 const DEFAULT_URL = location.protocol === 'https:'
   ? 'wss://es-game-server.onrender.com'
@@ -85,7 +85,7 @@ export class Net {
 
   listRooms() {
     if (this.online) this.send({ t: 'rooms' });
-    else this.h.onRooms(local.listRooms().map((r) => ({ ...r, humans: 1, local: true })));
+    else this.h.onRooms(listLocalRooms().map((r) => ({ ...r, humans: 1, local: true })));
   }
 
   isMine(slot) {

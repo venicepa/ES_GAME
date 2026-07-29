@@ -1,20 +1,20 @@
 import { blocked, GROUND, rayWalls } from './map.js';
 
-const CELL = 2;
+const NAV_CELL = 2;
 let nav = null;
 
 // 導航網格用取樣建立，不依賴地圖是怎麼畫的，所以三張圖都適用。
 export function buildNav() {
-  const w = Math.max(1, Math.floor(GROUND.s[0] / CELL));
-  const h = Math.max(1, Math.floor(GROUND.s[2] / CELL));
+  const w = Math.max(1, Math.floor(GROUND.s[0] / NAV_CELL));
+  const h = Math.max(1, Math.floor(GROUND.s[2] / NAV_CELL));
   const ox = -GROUND.s[0] / 2;
   const oz = -GROUND.s[2] / 2;
   const walk = new Uint8Array(w * h);
   const p = [0, 0, 0];
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      p[0] = ox + (x + 0.5) * CELL;
-      p[2] = oz + (y + 0.5) * CELL;
+      p[0] = ox + (x + 0.5) * NAV_CELL;
+      p[2] = oz + (y + 0.5) * NAV_CELL;
       walk[y * w + x] = blocked(p, 0.55) ? 0 : 1;
     }
   }
@@ -54,8 +54,8 @@ const DIRS = [
 export function findPath(from, to) {
   if (!nav) buildNav();
   const { w, h, ox, oz, walk } = nav;
-  const cx = (v) => Math.max(0, Math.min(w - 1, Math.floor((v - ox) / CELL)));
-  const cz = (v) => Math.max(0, Math.min(h - 1, Math.floor((v - oz) / CELL)));
+  const cx = (v) => Math.max(0, Math.min(w - 1, Math.floor((v - ox) / NAV_CELL)));
+  const cz = (v) => Math.max(0, Math.min(h - 1, Math.floor((v - oz) / NAV_CELL)));
 
   const s = nearestOpen(cx(from[0]), cz(from[2]));
   const g = nearestOpen(cx(to[0]), cz(to[2]));
@@ -99,7 +99,7 @@ export function findPath(from, to) {
   for (let i = goal; i !== start && i >= 0; i = prev[i]) {
     const x = i % w;
     const y = (i - x) / w;
-    out.push([ox + (x + 0.5) * CELL, 0, oz + (y + 0.5) * CELL]);
+    out.push([ox + (x + 0.5) * NAV_CELL, 0, oz + (y + 0.5) * NAV_CELL]);
   }
   out.reverse();
   return out;

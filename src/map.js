@@ -27,7 +27,7 @@ function box(w, d, h, tex) {
 
 // 用 ASCII 網格畫地圖，再把相鄰同類的格子貪婪合併成大方塊。
 // 手打幾百個座標無法維護，而合併可以把上千格壓成幾十個方塊，碰撞與陰影都更省。
-const CELL = 4;
+const GRID_CELL = 4;
 const LEGEND = {
   '#': { tex: 'sandstone', h: 6, uv: 0.3 },
   '=': { tex: 'sandstone', h: 1.3, uv: 0.3 },
@@ -41,8 +41,8 @@ export function fromGrid(rows, legend = LEGEND) {
   const used = rows.map((r) => new Array(r.length).fill(false));
   const out = [];
   const at = (x, y) => (rows[y] && rows[y][x]) || '.';
-  const ox = -(w * CELL) / 2;
-  const oz = -(h * CELL) / 2;
+  const ox = -(w * GRID_CELL) / 2;
+  const oz = -(h * GRID_CELL) / 2;
 
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
@@ -61,10 +61,10 @@ export function fromGrid(rows, legend = LEGEND) {
       for (let yy = y; yy <= ey; yy++) for (let xx = x; xx <= ex; xx++) used[yy][xx] = true;
 
       const spec = legend[c];
-      const sw = (ex - x + 1) * CELL;
-      const sd = (ey - y + 1) * CELL;
+      const sw = (ex - x + 1) * GRID_CELL;
+      const sd = (ey - y + 1) * GRID_CELL;
       out.push({
-        p: [ox + x * CELL + sw / 2, spec.h / 2, oz + y * CELL + sd / 2],
+        p: [ox + x * GRID_CELL + sw / 2, spec.h / 2, oz + y * GRID_CELL + sd / 2],
         s: [sw, spec.h, sd],
         tex: spec.tex,
         uv: spec.uv,
@@ -76,7 +76,7 @@ export function fromGrid(rows, legend = LEGEND) {
 }
 
 export function gridSize(rows) {
-  return [rows[0].length * CELL, rows.length * CELL];
+  return [rows[0].length * GRID_CELL, rows.length * GRID_CELL];
 }
 
 const DUST = {

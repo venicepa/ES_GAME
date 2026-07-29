@@ -24,7 +24,7 @@ function writeAll(list) {
   if (chan) chan.postMessage(Date.now());
 }
 
-export function listRooms() {
+export function listLocalRooms() {
   const now = Date.now();
   const all = readAll();
   const live = all.filter((r) => now - r.updatedAt < TTL);

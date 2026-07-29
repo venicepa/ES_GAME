@@ -1,3 +1,5 @@
+export const BUILD = '0729-d';
+
 const CSS = `
 .hud, .hud * { box-sizing: border-box; }
 .hud {
