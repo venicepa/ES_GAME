@@ -463,7 +463,7 @@ export function createGame(canvas, renderer) {
     const seen = new Set();
     for (const team of ['ct', 't']) {
       for (const slot of roster[team]) {
-        if (!slot || slot.type !== 'human' || slot.cid === net.cid) continue;
+        if (!slot || slot.type !== 'human' || slot.cid === myCid()) continue;
         seen.add(slot.cid);
         let r = remotes.get(slot.cid);
         if (!r) { r = new Remote(slot.cid, slot.name, team); remotes.set(slot.cid, r); }

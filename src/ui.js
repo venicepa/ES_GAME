@@ -252,6 +252,9 @@ const CSS = `
   margin: 0; font-size: 30px; letter-spacing: .22em; font-weight: 800; color: #e8c477;
 }
 .hud .lobby .lhead p { margin: 8px 0 0; font-size: 11.5px; letter-spacing: .24em; opacity: .42; font-weight: 400; }
+.hud .netdot { font-weight: 700; letter-spacing: .12em; margin-left: 10px; }
+.hud .netdot.on { color: #86e08a; }
+.hud .netdot.off { color: #ffb04a; }
 .hud .lobby .namefield { display: flex; align-items: center; gap: 12px; }
 .hud .lobby .namefield span { font-size: 11px; letter-spacing: .26em; opacity: .5; }
 .hud .lobby input {
@@ -488,7 +491,7 @@ export class UI {
         <div class="lhead">
           <div>
             <h2>建立房間</h2>
-            <p>DEATHMATCH · 120 秒 · 每邊最多 3 人</p>
+            <p>DEATHMATCH · 120 秒 · 每邊最多 3 人 <b class="netdot" data-netdot></b></p>
           </div>
           <div style="display:flex;gap:20px">
             <label class="namefield">
@@ -564,7 +567,7 @@ export class UI {
       lobby: q('lobby'), name: q('name'), roomName: q('roomname'),
       browse: q('browse'), rooms: q('rooms'), browseSub: q('browsesub'),
       btnRefresh: root.querySelector('[data-refresh]'), btnBBack: root.querySelector('[data-bback]'),
-      slots: { ct: q('slots-ct'), t: q('slots-t') }, maps: q('maps'),
+      slots: { ct: q('slots-ct'), t: q('slots-t') }, maps: q('maps'), netdot: q('netdot'),
       btnStart: root.querySelector('[data-start]'), btnBack: root.querySelector('[data-back]'),
       btnNew: root.querySelector('[data-new]'), btnFind: root.querySelector('[data-find]'),
     };
@@ -690,6 +693,8 @@ export class UI {
   }
 
   renderLobby(model) {
+    this.el.netdot.textContent = model.online ? '● 已連線' : '● 離線模式（只能單機）';
+    this.el.netdot.className = `netdot ${model.online ? 'on' : 'off'}`;
     [...this.el.maps.children].forEach((b, i) => {
       b.classList.toggle('sel', model.maps[i].id === model.map);
     });
