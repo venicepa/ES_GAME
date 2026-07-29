@@ -6,7 +6,7 @@ import { createBots, Enemy, HEAD_MULT } from './enemy.js';
 import { Remote, REMOTE_RATE } from './remote.js';
 import { emptyRoster, movePlayer, toggleBot, findSeat, pickBotName, TEAMS } from './roster.js';
 import { Net } from './net.js';
-import { UI } from './ui.js';
+import { UI, BUILD } from './ui.js';
 
 export const ROUND_TIME = 120;
 export const ENEMY_DAMAGE = 9;
@@ -40,6 +40,7 @@ export function createGame(canvas, renderer) {
     keys[e.code] = true;
     if (state !== 'play') return;
     if (e.code === 'Space') e.preventDefault();
+    if (e.code === 'F3') { e.preventDefault(); debugOn = ui.toggleDebug(); }
     if (e.code === 'KeyR') player.reload();
     if (e.code === 'Digit1') player.switchTo('pistol');
     if (e.code === 'Digit2') player.switchTo('rifle');
@@ -422,6 +423,22 @@ export function createGame(canvas, renderer) {
     for (const r of remotes.values()) r.update(dt, clock);
     pushNetState(dt);
 
+    if (debugOn) {
+      const lines = [
+        `build ${BUILD}  ${net.online ? '線上' : '離線'}  ${isHost() ? '房主(我模擬電腦)' : '非房主(看房主廣播)'}`,
+        `我方 ${player.team}  電腦 ${bots.length}  遠端 ${remotes.size}`,
+      ];
+      for (const b of bots) {
+        const d = Math.hypot(b.pos[0] - player.pos[0], b.pos[2] - player.pos[2]);
+        lines.push(
+          `${b.name}(${b.team}) 距${d.toFixed(1)}m 血${Math.max(0, b.hp)} ` +
+          `${b.alive ? '活' : '死'} moving${b.moving.toFixed(1)} ` +
+          `${b.target ? '有目標' : '無目標'} 卡${b.stuck.toFixed(1)}`
+        );
+      }
+      ui.setDebug(lines.join('\n'));
+    }
+
     const s = player.spec;
     ui.setWeapon(s.label, player.ammo[player.weapon], s.mag, player.reloading > 0);
     ui.setHP(player.hp);
@@ -449,6 +466,7 @@ export function createGame(canvas, renderer) {
   /** @type {Map<string, Remote>} 其他真人玩家 */
   const remotes = new Map();
   let netTimer = 0;
+  let debugOn = false;
   const isHost = () => !net.online || !net.room || net.room.hostId === net.cid;
 
   function combatants() {

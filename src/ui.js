@@ -1,4 +1,4 @@
-export const BUILD = '0729-d';
+export const BUILD = '0729-f';
 
 const CSS = `
 .hud, .hud * { box-sizing: border-box; }
@@ -333,6 +333,14 @@ const CSS = `
 .hud .lobby .acts button.primary { background: #e8c477; color: #1a1408; border-color: #e8c477; }
 .hud .lobby .acts button.primary:hover { background: #f7dc9c; }
 
+.hud .debug {
+  position: absolute; left: 14px; top: 14px; display: none;
+  background: rgba(6,8,12,.82); border: 1px solid rgba(255,255,255,.14);
+  padding: 10px 14px; font: 400 11.5px/1.6 ui-monospace, Menlo, monospace;
+  letter-spacing: .04em; white-space: pre; color: #d8e3f0; text-shadow: none;
+}
+.hud .debug.on { display: block; }
+
 .hud .plates { position: absolute; inset: 0; pointer-events: none; }
 .hud .plates div {
   position: absolute; transform: translate(-50%, -100%); white-space: nowrap;
@@ -489,6 +497,7 @@ export class UI {
         </div>
       </div>
       <div class="plates" data-plates></div>
+      <div class="debug" data-debug></div>
       <div class="lobby" data-lobby>
         <div class="lhead">
           <div>
@@ -565,7 +574,7 @@ export class UI {
       wep: q('wep'), ammo: q('ammo'), mag: q('mag'), res: q('res'), reload: q('reload'),
       msg: q('msg'), dmg: q('dmg'), lowhp: q('lowhp'),
       ov: q('ov'), ovt: q('ovt'), ovs: q('ovs'), ovb: q('ovb'),
-      title: q('title'), note: q('note'), plates: q('plates'),
+      title: q('title'), note: q('note'), plates: q('plates'), debug: q('debug'),
       lobby: q('lobby'), name: q('name'), roomName: q('roomname'),
       browse: q('browse'), rooms: q('rooms'), browseSub: q('browsesub'),
       btnRefresh: root.querySelector('[data-refresh]'), btnBBack: root.querySelector('[data-bback]'),
@@ -780,6 +789,15 @@ export class UI {
   }
 
   // 名牌：由 renderer 算好螢幕座標後餵進來
+  toggleDebug() {
+    this.el.debug.classList.toggle('on');
+    return this.el.debug.classList.contains('on');
+  }
+
+  setDebug(text) {
+    if (this.el.debug.classList.contains('on')) this.el.debug.textContent = text;
+  }
+
   setPlates(list) {
     const host = this.el.plates;
     while (host.childElementCount < list.length) host.appendChild(document.createElement('div'));

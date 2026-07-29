@@ -7,8 +7,8 @@ export const RESPAWN_DELAY = 3;
 export const HEAD_MULT = 4;
 
 const SPEED = 3.4;
-const KEEP_DISTANCE = 4.5;
-const STRAFE_SPEED = 0.55;
+const KEEP_DISTANCE = 2.2;
+const STRAFE_SPEED = 0.8;
 const SIGHT_RANGE = 46;
 const DEATH_TIME = 0.55;
 
@@ -157,7 +157,8 @@ export class Enemy {
       this.strafeTimer -= dt;
       if (this.strafeTimer <= 0) {
         this.strafe = Math.random() < 0.5 ? -1 : 1;
-        this.strafeTimer = 0.7 + Math.random() * 1.3;
+        // 換邊要夠久，不然只是在原地左右抖，看起來像沒動
+        this.strafeTimer = 2.5 + Math.random() * 2.5;
       }
       const flat = vnorm([to[0], 0, to[2]]);
       const side = [flat[2] * this.strafe, 0, -flat[0] * this.strafe];
@@ -172,13 +173,18 @@ export class Enemy {
     const moved = Math.hypot(this.pos[0] - before[0], this.pos[2] - before[1]);
     this.phase += moved * 5.2;
 
-    if (advancing) {
-      if (moved < SPEED * dt * 0.35) this.stuck += dt;
-      else this.stuck = Math.max(0, this.stuck - dt * 2);
-      if (this.stuck > 0.45) {
+    if (moved < SPEED * dt * 0.35) this.stuck += dt;
+    else this.stuck = Math.max(0, this.stuck - dt * 2);
+
+    if (this.stuck > 0.45) {
+      this.stuck = 0;
+      if (advancing) {
         this.forcePath = 2;
         this.path = null;
-        this.stuck = 0;
+      } else {
+        // 橫移撞牆時立刻換邊，否則會一直往牆裡推、原地抖動看起來完全靜止
+        this.strafe = -this.strafe;
+        this.strafeTimer = 0.6 + Math.random();
       }
     }
 
