@@ -51,6 +51,11 @@ export class Net {
       else if (m.t === 'start') { this.room = m.room; this.h.onStart(m.room); }
       else if (m.t === 'left') { this.room = null; this.h.onLeft(); }
       else if (m.t === 'error') this.h.onError(m.msg);
+      else if (m.t === 's') this.h.onState(m.cid, m.s);
+      else if (m.t === 'b') this.h.onBots(m.bots);
+      else if (m.t === 'f') this.h.onFire(m.cid, m.o, m.e);
+      else if (m.t === 'hit') this.h.onHit(m);
+      else if (m.t === 'kill') this.h.onKill(m);
     };
     ws.onclose = () => {
       this.online = false;

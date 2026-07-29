@@ -45,6 +45,21 @@ function broadcastRoom(r) {
   for (const c of roomMembers(r.id)) send(c, payload);
 }
 
+function sendTo(roomId, cid, msg) {
+  for (const c of roomMembers(roomId)) if (c.cid === cid) send(c, msg);
+}
+
+function relay(roomId, fromCid, msg) {
+  for (const c of roomMembers(roomId)) if (c.cid !== fromCid) send(c, msg);
+}
+
+function teamOf(roster, cid) {
+  for (const team of ['ct', 't']) {
+    if (roster[team].some((s) => s && s.type === 'human' && s.cid === cid)) return team;
+  }
+  return null;
+}
+
 function seatFor(roster, cid) {
   for (const team of ['ct', 't']) {
     const i = roster[team].findIndex((s) => s && s.type === 'human' && s.cid === cid);
@@ -155,6 +170,7 @@ wss.on('connection', (ws) => {
         status: 'open',
         createdAt: Date.now(),
         emptyAt: 0,
+        score: { ct: 0, t: 0 },
       };
       r.roster.ct[0] = { type: 'human', cid: ws.cid, name: ws.pname };
       rooms.set(id, r);
@@ -221,8 +237,41 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    // ---- 對戰中的轉發（中繼式：命中由開槍方判定，伺服器只記分與轉送）----
+    if (m.t === 's') {
+      relay(room.id, ws.cid, { t: 's', cid: ws.cid, s: m.s });
+      return;
+    }
+
+    if (m.t === 'b') {
+      if (room.hostId !== ws.cid) return;
+      relay(room.id, ws.cid, { t: 'b', bots: m.bots });
+      return;
+    }
+
+    if (m.t === 'f') {
+      relay(room.id, ws.cid, { t: 'f', cid: ws.cid, o: m.o, e: m.e });
+      return;
+    }
+
+    if (m.t === 'hit') {
+      // 傷害交給被打的那一方套用：玩家自己算，電腦則由房主算
+      if (m.kind === 'player') sendTo(room.id, m.cid, { t: 'hit', from: ws.cid, dmg: m.dmg });
+      else sendTo(room.id, room.hostId, { t: 'hit', from: ws.cid, bot: m.bot, dmg: m.dmg });
+      return;
+    }
+
+    if (m.t === 'kill') {
+      const team = m.team === 'ct' || m.team === 't' ? m.team : null;
+      if (team) room.score[team] += 1;
+      const payload = { t: 'kill', killer: m.killer, victim: m.victim, head: !!m.head, score: room.score };
+      for (const c of roomMembers(room.id)) send(c, payload);
+      return;
+    }
+
     if (m.t === 'start' && room.hostId === ws.cid) {
       room.status = 'playing';
+      room.score = { ct: 0, t: 0 };
       const payload = {
         t: 'start',
         room: { ...roomSummary(room), roster: room.roster, hostId: room.hostId },

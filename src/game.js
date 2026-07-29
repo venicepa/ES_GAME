@@ -2,7 +2,8 @@ import { vadd, vmul, vnorm } from './gl.js';
 import { rayWalls, rayWallsHit, rayBox, MAPS, setMap, currentMap } from './map.js';
 import { buildNav } from './nav.js';
 import { Player, WEAPONS } from './player.js';
-import { createBots, HEAD_MULT } from './enemy.js';
+import { createBots, Enemy, HEAD_MULT } from './enemy.js';
+import { Remote, REMOTE_RATE } from './remote.js';
 import { emptyRoster, movePlayer, toggleBot, findSeat, pickBotName, TEAMS } from './roster.js';
 import { Net } from './net.js';
 import { UI } from './ui.js';
@@ -170,7 +171,8 @@ export function createGame(canvas, renderer) {
     player.team = seat ? seat.team : 'ct';
     player.name = playerName || '玩家';
     bots = createBots(roster, player.pos);
-    if (renderer.onEnemiesReset) renderer.onEnemiesReset(bots);
+    syncRoster(roster);
+    if (renderer.onEnemiesReset) renderer.onEnemiesReset(combatants());
     ui.setTeam(player.team);
     restart();
   }
@@ -258,9 +260,20 @@ export function createGame(canvas, renderer) {
     if (decals.length > 44) decals.shift();
   }
 
-  function credit(team) {
-    score[team] += 1;
-    ui.setScore(score.ct, score.t);
+  // 線上時記分交給伺服器，避免各機器算出不同比分；離線時自己記。
+  function reportKill(killer, victim, head) {
+    const team = killer ? killer.team : null;
+    const kname = (killer && killer.name) || '?';
+    const vname = (victim && victim.name) || '?';
+    if (net.online) {
+      net.send({ t: 'kill', team, killer: kname, victim: vname, head: !!head });
+      return;
+    }
+    if (team) {
+      score[team] += 1;
+      ui.setScore(score.ct, score.t);
+    }
+    ui.killfeed(kname, vname, head ? '☠ HS' : '✖');
   }
 
   function botShoot(shooter, target, dir, dist) {
@@ -274,17 +287,18 @@ export function createGame(canvas, renderer) {
     if (target === player) {
       ui.flashDamage();
       if (player.damage(ENEMY_DAMAGE) === 0) {
-        credit(shooter.team);
-        ui.killfeed(shooter.name, player.name, '✖');
+        reportKill(shooter, player);
         const foe = TEAMS[shooter.team].zh;
         finish('YOU DIED', `被${foe}擊倒。<br>CT ${score.ct} — T ${score.t}`);
       }
       return;
     }
-    if (target.hit(ENEMY_DAMAGE)) {
-      credit(shooter.team);
-      ui.killfeed(shooter.name, target.name, '✖');
+    if (target.remote) {
+      // 傷害由被打的那個人套用，這裡只通知
+      net.send({ t: 'hit', kind: 'player', cid: target.cid, dmg: ENEMY_DAMAGE });
+      return;
     }
+    if (target.hit(ENEMY_DAMAGE)) reportKill(shooter, target);
   }
 
   // dirs 是這一次擊發的所有彈道（散彈槍一次多顆）。
@@ -293,6 +307,7 @@ export function createGame(canvas, renderer) {
     const origin = player.eye;
     const spec = player.spec;
     const hits = new Map();
+    const targets = combatants();
     muzzle = 0.05;
 
     for (const dir of dirs) {
@@ -301,7 +316,7 @@ export function createGame(canvas, renderer) {
       let head = false;
       let best = wall.t;
 
-      for (const e of bots) {
+      for (const e of targets) {
         if (!e.alive || e.team === player.team) continue;
         const hb = e.headBounds();
         const th = rayBox(origin, dir, hb[0], hb[1]);
@@ -320,8 +335,10 @@ export function createGame(canvas, renderer) {
         }
       }
 
+      const from = vadd(origin, vmul(dir, 0.6));
       const end = vadd(origin, vmul(dir, Math.min(best, 200)));
-      tracers.push({ a: vadd(origin, vmul(dir, 0.6)), b: end, life: 0.035, max: 0.035, c: [1, 0.96, 0.72] });
+      tracers.push({ a: from, b: end, life: 0.035, max: 0.035, c: [1, 0.96, 0.72] });
+      if (net.online) net.send({ t: 'f', o: from.map((v) => +v.toFixed(2)), e: end.map((v) => +v.toFixed(2)) });
 
       if (!target) {
         if (wall.n) {
@@ -342,13 +359,22 @@ export function createGame(canvas, renderer) {
     let killed = false;
     let killHead = false;
     for (const [enemy, acc] of hits) {
+      if (enemy.remote) {
+        // 傷害由被打的那個人套用，這裡只通知
+        net.send({ t: 'hit', kind: 'player', cid: enemy.cid, dmg: acc.dmg });
+        continue;
+      }
+      if (net.online && !isHost()) {
+        // 電腦的血量由房主保管，傷害轉給房主套用
+        net.send({ t: 'hit', kind: 'bot', bot: bots.indexOf(enemy), dmg: acc.dmg });
+        continue;
+      }
       if (!enemy.hit(acc.dmg)) continue;
       killed = true;
       killHead = killHead || acc.head;
-      score.ct += 1;
-      ui.killfeed(player.name, enemy.name, acc.head ? '☠ HS' : '✖');
+      reportKill(player, enemy, acc.head);
     }
-    ui.hitmarker(killed);
+    ui.hitmarker(true);
     if (killed && killHead) ui.message('HEADSHOT', 900);
   }
 
@@ -387,8 +413,13 @@ export function createGame(canvas, renderer) {
     mouse.pressed = false;
     if (shots) playerShoot(shots);
 
-    const world = { player, bots };
-    for (const b of bots) b.update(dt, world, botShoot);
+    // 電腦只由房主模擬，其他人套用房主廣播的位置，畫面才會一致
+    if (isHost()) {
+      const world = { player, bots: combatants() };
+      for (const b of bots) b.update(dt, world, botShoot);
+    }
+    for (const r of remotes.values()) r.update(dt, clock);
+    pushNetState(dt);
 
     const s = player.spec;
     ui.setWeapon(s.label, player.ammo[player.weapon], s.mag, player.reloading > 0);
@@ -405,11 +436,74 @@ export function createGame(canvas, renderer) {
     clock += dt;
     if (state === 'play') update(dt);
     renderer.render({
-      player, enemies: bots, tracers, particles, decals, clock, muzzle,
+      player, enemies: combatants(), tracers, particles, decals, clock, muzzle,
       playing: state === 'play', title: state !== 'play' && state !== 'paused' && state !== 'over',
       plates: emitPlates,
     });
     requestAnimationFrame(frame);
+  }
+
+  Remote.drawFn = Enemy.prototype.draw;
+
+  /** @type {Map<string, Remote>} 其他真人玩家 */
+  const remotes = new Map();
+  let netTimer = 0;
+  const isHost = () => !net.online || !net.room || net.room.hostId === net.cid;
+
+  function combatants() {
+    return bots.concat([...remotes.values()]);
+  }
+
+  function remoteByCid(cid) {
+    return remotes.get(cid);
+  }
+
+  function syncRoster(roster) {
+    const seen = new Set();
+    for (const team of ['ct', 't']) {
+      for (const slot of roster[team]) {
+        if (!slot || slot.type !== 'human' || slot.cid === net.cid) continue;
+        seen.add(slot.cid);
+        let r = remotes.get(slot.cid);
+        if (!r) { r = new Remote(slot.cid, slot.name, team); remotes.set(slot.cid, r); }
+        r.team = team;
+        r.name = slot.name;
+      }
+    }
+    for (const cid of [...remotes.keys()]) if (!seen.has(cid)) remotes.delete(cid);
+  }
+
+  // 每 1/20 秒把自己的狀態送出去；房主另外送電腦的狀態，
+  // 否則每個人畫面上的電腦會各走各的。
+  function pushNetState(dt) {
+    if (!net.online || state !== 'play') return;
+    netTimer -= dt;
+    if (netTimer > 0) return;
+    netTimer = REMOTE_RATE;
+    net.send({
+      t: 's',
+      s: {
+        p: [+player.pos[0].toFixed(2), +player.pos[1].toFixed(2), +player.pos[2].toFixed(2)],
+        y: +player.yaw.toFixed(3),
+        m: player.bobAmount > 0.4 ? 1 : 0,
+        a: player.alive,
+        hp: player.hp,
+        n: player.name,
+      },
+    });
+    if (isHost() && bots.length) {
+      net.send({
+        t: 'b',
+        bots: bots.map((b, i) => ({
+          i,
+          p: [+b.pos[0].toFixed(2), +b.pos[1].toFixed(2), +b.pos[2].toFixed(2)],
+          y: +b.yaw.toFixed(3),
+          m: b.moving > 0.5 ? 1 : 0,
+          a: b.alive,
+          hp: b.hp,
+        })),
+      });
+    }
   }
 
   const emitPlates = (list) => ui.setPlates(list);
@@ -439,6 +533,52 @@ export function createGame(canvas, renderer) {
     },
     onLeft: () => {},
     onError: (msg) => ui.titleNote(msg),
+    onState: (cid, st) => {
+      const r = remotes.get(cid);
+      if (r) r.push(st, clock);
+    },
+    onBots: (list) => {
+      if (isHost()) return;
+      for (const b of list) {
+        const bot = bots[b.i];
+        if (!bot) continue;
+        const moved = Math.hypot(b.p[0] - bot.pos[0], b.p[2] - bot.pos[2]);
+        bot.phase += moved * 5.2;
+        bot.pos[0] = b.p[0];
+        bot.pos[1] = b.p[1];
+        bot.pos[2] = b.p[2];
+        bot.yaw = b.y;
+        bot.moving = b.m;
+        bot.alive = b.a;
+        bot.hp = b.hp;
+        if (!b.a) bot.dying = Math.min(0.55, bot.dying + 0.05);
+        else bot.dying = 0;
+      }
+    },
+    onFire: (cid, o, e) => {
+      tracers.push({ a: o, b: e, life: 0.05, max: 0.05, c: [1, 0.85, 0.45] });
+      const r = remotes.get(cid);
+      if (r) r.flash = 0.06;
+    },
+    onHit: (m) => {
+      if (m.bot !== undefined) {
+        const bot = bots[m.bot];
+        if (!bot || !bot.alive) return;
+        if (bot.hit(m.dmg)) reportKill(remoteByCid(m.from), bot);
+        return;
+      }
+      ui.flashDamage();
+      if (player.damage(m.dmg) === 0) {
+        const killer = remoteByCid(m.from);
+        reportKill(killer, player);
+        finish('YOU DIED', `被 ${killer ? killer.name : '對手'} 擊倒。<br>CT ${score.ct} — T ${score.t}`);
+      }
+    },
+    onKill: (m) => {
+      score = m.score;
+      ui.setScore(score.ct, score.t);
+      ui.killfeed(m.killer, m.victim, m.head ? '☠ HS' : '✖');
+    },
   });
   net.setName(playerName);
   net.connect();
