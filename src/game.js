@@ -3,10 +3,8 @@ import { rayWalls, rayWallsHit, rayBox, MAPS, setMap, currentMap } from './map.j
 import { buildNav } from './nav.js';
 import { Player, WEAPONS } from './player.js';
 import { createBots, HEAD_MULT } from './enemy.js';
-import { emptyRoster, movePlayer, toggleBot, findPlayer, TEAMS } from './roster.js';
-import {
-  listRooms, publishRoom, touchRoom, removeRoom, onRoomsChanged, newRoomId, HEARTBEAT,
-} from './rooms.js';
+import { emptyRoster, movePlayer, toggleBot, findSeat, pickBotName, TEAMS } from './roster.js';
+import { Net } from './net.js';
 import { UI } from './ui.js';
 
 export const ROUND_TIME = 120;
@@ -20,8 +18,6 @@ export function createGame(canvas, renderer) {
   let playerName = 'PLAYER';
   let roomName = '';
   let mapId = 'dust';
-  let roomId = null;
-  let heartbeat = null;
   // 標題畫面用滿編陣容當背景
   let bots = createBots({
     ct: [{ type: 'bot', name: 'Volt' }, { type: 'bot', name: 'Piper' }, null],
@@ -78,93 +74,100 @@ export function createGame(canvas, renderer) {
     [3.2, 6.0, -2.5], [-3.6, 7.2, 2.4], [6.4, -2.2, 3.4], [-7.0, -3.4, 1.2], [1.0, 12.5, 3.0],
   ];
 
-  function rosterCounts() {
-    let filled = 0;
-    for (const t of ['ct', 't']) for (const slot of roster[t]) if (slot) filled++;
-    return filled;
+  const myCid = () => net.cid || 'local';
+  const isMine = (slot) => !!slot && slot.type === 'human' && slot.cid === myCid();
+  const mapList = () => Object.values(MAPS).map((m) => ({ id: m.id, zh: m.zh, label: m.label }));
+
+  function lobbyModel() {
+    return {
+      roster, name: playerName, room: roomName, map: mapId,
+      maps: mapList(), isMine,
+      online: net.online,
+      canStart: !net.online || !net.room || net.room.hostId === myCid(),
+    };
   }
 
-  // 開房：把房間寫進本機清單並定時更新心跳，離開時移除。
-  // 同一個瀏覽器的其他分頁會透過 BroadcastChannel 即時看到。
-  function openRoom(status) {
-    if (!roomId) roomId = newRoomId();
-    publishRoom({
-      id: roomId,
-      name: roomName || `${playerName || '玩家'} 的房間`,
-      host: playerName || '玩家',
-      mode: 'DEATHMATCH',
-      map: currentMap().label,
-      mapId,
-      filled: rosterCounts(),
-      max: 6,
-      status,
-      roster: JSON.parse(JSON.stringify(roster)),
-      createdAt: Date.now(),
-    });
-    if (heartbeat) clearInterval(heartbeat);
-    heartbeat = setInterval(() => touchRoom(roomId), HEARTBEAT);
+  function refreshLobby() {
+    if (state === 'lobby') ui.renderLobby(lobbyModel());
   }
 
-  function closeRoom() {
-    if (heartbeat) clearInterval(heartbeat);
-    heartbeat = null;
-    if (roomId) removeRoom(roomId);
-    roomId = null;
+  // 線上時所有動作都送給伺服器，畫面等廣播回來再更新；離線時直接改本機狀態。
+  const lobbyHandlers = {
+    onName: (v) => {
+      playerName = v.slice(0, 12);
+      net.setName(playerName);
+      if (!net.online) {
+        const seat = findSeat(roster, myCid());
+        if (seat) roster[seat.team][seat.index].name = playerName;
+        refreshLobby();
+      }
+    },
+    onRoomName: (v) => {
+      roomName = v.slice(0, 18);
+      if (net.online) net.send({ t: 'roomname', name: roomName });
+    },
+    onMap: (id) => {
+      mapId = id;
+      if (net.online) net.send({ t: 'map', mapId: id });
+      else refreshLobby();
+    },
+    onSlot: (team, i, action) => {
+      if (net.online) {
+        net.send({ t: 'slot', team, index: i, action, botName: pickBotName(roster) });
+        return;
+      }
+      if (action === 'join') movePlayer(roster, team, i, myCid(), playerName);
+      else toggleBot(roster, team, i);
+      refreshLobby();
+    },
+    onStart: () => {
+      if (net.online) net.send({ t: 'start' });
+      else { ui.hideLobby(); startMatch(); }
+    },
+    onBack: () => {
+      if (net.online) net.send({ t: 'leave' });
+      ui.hideLobby();
+      title();
+    },
+  };
+
+  function lobby() {
+    state = 'lobby';
+    ui.hideTitle();
+    if (!roomName) roomName = `${playerName || '玩家'} 的房間`;
+    if (net.online) {
+      net.send({ t: 'create', name: roomName, mapId });
+    } else {
+      roster = emptyRoster(myCid(), playerName);
+    }
+    ui.showLobby(lobbyModel(), lobbyHandlers);
   }
 
   function browse() {
     state = 'browse';
     ui.hideTitle();
+    ui.setNetStatus(net.online ? '線上房間' : '離線模式 · 只看得到本機房間');
     ui.showBrowse({
-      onRefresh: () => ui.renderRooms(listRooms()),
+      onRefresh: () => net.listRooms(),
       onBack: () => { ui.hideBrowse(); title(); },
       onJoin: (room) => {
-        roster = room.roster;
+        if (net.online && !room.local) { net.send({ t: 'join', id: room.id }); return; }
+        roster = room.roster || emptyRoster(myCid(), playerName);
         roomName = room.name;
         mapId = room.mapId || 'dust';
         ui.hideBrowse();
         startMatch();
       },
     });
-    ui.renderRooms(listRooms());
-  }
-
-  function lobby() {
-    state = 'lobby';
-    ui.hideTitle();
-    if (!roomName) roomName = `${playerName || '玩家'} 的房間`;
-    const mapList = Object.values(MAPS).map((m) => ({ id: m.id, zh: m.zh, label: m.label }));
-    ui.showLobby({ roster, name: playerName, room: roomName, map: mapId, maps: mapList }, {
-      onMap: (id) => {
-        mapId = id;
-        ui.renderLobby({ roster, name: playerName, room: roomName, map: mapId, maps: mapList });
-        openRoom('open');
-      },
-      onRoomName: (v) => { roomName = v.slice(0, 18); openRoom('open'); },
-      onName: (v) => {
-        playerName = v.slice(0, 12);
-        ui.renderLobby({ roster, name: playerName, room: roomName, map: mapId, maps: mapList });
-        openRoom('open');
-      },
-      onSlot: (team, i, action) => {
-        if (action === 'join') movePlayer(roster, team, i);
-        else toggleBot(roster, team, i);
-        ui.renderLobby({ roster, name: playerName, room: roomName, map: mapId, maps: mapList });
-        openRoom('open');
-      },
-      onStart: () => { ui.hideLobby(); startMatch(); },
-      onBack: () => { ui.hideLobby(); closeRoom(); title(); },
-    });
-    openRoom('open');
+    net.listRooms();
   }
 
   function startMatch() {
     setMap(mapId);
     buildNav();
     if (renderer.setMapVisual) renderer.setMapVisual();
-    openRoom('playing');
-    const at = findPlayer(roster);
-    player.team = at ? at.team : 'ct';
+    const seat = findSeat(roster, myCid());
+    player.team = seat ? seat.team : 'ct';
     player.name = playerName || '玩家';
     bots = createBots(roster, player.pos);
     if (renderer.onEnemiesReset) renderer.onEnemiesReset(bots);
@@ -410,8 +413,35 @@ export function createGame(canvas, renderer) {
   }
 
   const emitPlates = (list) => ui.setPlates(list);
-  onRoomsChanged(() => { if (state === 'browse') ui.renderRooms(listRooms()); });
-  addEventListener('beforeunload', closeRoom);
+
+  const net = new Net({
+    onStatus: () => {
+      if (state === 'browse') ui.setNetStatus(net.online ? '線上房間' : '離線模式 · 只看得到本機房間');
+      refreshLobby();
+    },
+    onRooms: (list) => {
+      if (state !== 'browse') return;
+      const labels = Object.fromEntries(Object.values(MAPS).map((m) => [m.id, m.label]));
+      ui.renderRooms(list.map((r) => ({ ...r, mapLabel: labels[r.mapId] || r.mapId })));
+    },
+    onRoom: (room) => {
+      roster = room.roster;
+      roomName = room.name;
+      mapId = room.mapId;
+      if (state === 'browse') { ui.hideBrowse(); state = 'lobby'; ui.showLobby(lobbyModel(), lobbyHandlers); }
+      else refreshLobby();
+    },
+    onStart: (room) => {
+      roster = room.roster;
+      mapId = room.mapId;
+      ui.hideLobby();
+      startMatch();
+    },
+    onLeft: () => {},
+    onError: (msg) => ui.titleNote(msg),
+  });
+  net.setName(playerName);
+  net.connect();
   player.team = 'ct';
   player.name = playerName;
   ui.setTeam('ct');

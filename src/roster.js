@@ -8,9 +8,9 @@ const BOT_NAMES = [
   'Kestrel', 'Nomad', 'Vex', 'Ash', 'Grit', 'Halo',
 ];
 
-export function emptyRoster() {
+export function emptyRoster(cid, name) {
   return {
-    ct: [{ type: 'player' }, null, null],
+    ct: [{ type: 'human', cid, name }, null, null],
     t: [null, null, null],
   };
 }
@@ -30,19 +30,19 @@ export function pickBotName(roster) {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-export function findPlayer(roster) {
+export function findSeat(roster, cid) {
   for (const team of ['ct', 't']) {
-    const i = roster[team].findIndex((s) => s && s.type === 'player');
+    const i = roster[team].findIndex((s) => s && s.type === 'human' && s.cid === cid);
     if (i >= 0) return { team, index: i };
   }
   return null;
 }
 
-export function movePlayer(roster, team, index) {
+export function movePlayer(roster, team, index, cid, name) {
   if (roster[team][index]) return false;
-  const at = findPlayer(roster);
+  const at = findSeat(roster, cid);
   if (at) roster[at.team][at.index] = null;
-  roster[team][index] = { type: 'player' };
+  roster[team][index] = { type: 'human', cid, name };
   return true;
 }
 

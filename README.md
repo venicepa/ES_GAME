@@ -69,6 +69,30 @@ node build.js
 
 資料模型在 `src/roster.js`（`emptyRoster` / `movePlayer` / `toggleBot` / `findPlayer`），UI 在 `ui.js` 的 `showLobby()` / `renderLobby()`。
 
+## 連線大廳
+
+`server/` 是 Node + WebSocket 的房間伺服器，房間狀態放在伺服器記憶體裡，所以**不同電腦之間看得到彼此的房間**。
+
+- 建立房間、加入、換隊、加／移除電腦、換地圖、按開始，全部即時廣播給同房間的人
+- 房主離線會自動移交給下一個人；房間空了 5 秒後回收（留寬限時間，避免重整頁面就掉房）
+- 客戶端連不上伺服器時**自動退回離線模式**，用 `localStorage` 的本機房間，遊戲照樣能玩
+
+伺服器位址預設是 `wss://es-game-server.onrender.com`，可以用 `?server=wss://...` 覆蓋，方便測試。
+
+### 本機開發
+
+```bash
+cd server && npm install && node server.js   # 監聽 8787
+```
+
+客戶端從 `http://localhost` 開啟時會自動連 `ws://localhost:8787`。
+
+### 部署
+
+伺服器要開一個 Render **Web Service**（靜態網站不能跑後端）：Root Directory `server`、Build `npm install`、Start `node server.js`。免費方案閒置會休眠，第一個連進來的人要等冷啟動，客戶端會持續重試。
+
+**目前只有大廳連線，遊戲內還沒同步**——按開始之後每個人是在自己機器上跑各自的戰局。
+
 ## 尋找房間
 
 `尋找房間` 是房間瀏覽器，列出目前存在的房間：房間名稱、主機、模式、人數、狀態（等待中／進行中），按「加入」會套用該房間的陣容直接開打。

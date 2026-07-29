@@ -697,10 +697,11 @@ export class UI {
       host.innerHTML = '';
       model.roster[team].forEach((slot, i) => {
         const kind = slot ? slot.type : 'free';
+        const mine = kind === 'human' && model.isMine(slot);
         const row = document.createElement('div');
-        row.className = `slot ${kind === 'free' ? 'free' : ''} ${kind === 'player' ? 'me' : ''}`;
-        const who = kind === 'player' ? (model.name || '玩家') : kind === 'bot' ? slot.name : '空位';
-        const tag = kind === 'player' ? '你' : kind === 'bot' ? '電腦' : '';
+        row.className = `slot ${kind === 'free' ? 'free' : ''} ${mine ? 'me' : ''}`;
+        const who = kind === 'human' ? (slot.name || '玩家') : kind === 'bot' ? slot.name : '空位';
+        const tag = mine ? '你' : kind === 'human' ? '玩家' : kind === 'bot' ? '電腦' : '';
         row.innerHTML =
           `<span class="av">${kind === 'free' ? '+' : who.slice(0, 1).toUpperCase()}</span>` +
           `<span class="who">${who}</span><span class="tag">${tag}</span>`;
@@ -736,10 +737,14 @@ export class UI {
     this.el.root.classList.remove('lobby-on');
   }
 
+  setNetStatus(label) {
+    this.netLabel = label;
+  }
+
   renderRooms(rooms) {
     const host = this.el.rooms;
     host.innerHTML = '';
-    this.el.browseSub.textContent = `本機房間列表 · ${rooms.length} 間`;
+    this.el.browseSub.textContent = this.netLabel || `房間列表 · ${rooms.length} 間`;
     if (!rooms.length) {
       const d = document.createElement('div');
       d.className = 'empty';
@@ -754,7 +759,7 @@ export class UI {
       row.innerHTML =
         `<span class="rname">${r.name}</span>` +
         `<span class="dim">${r.host}</span>` +
-        `<span class="dim">${r.map}</span>` +
+        `<span class="dim">${r.mapLabel || r.map || ''}</span>` +
         `<span class="dim">${r.filled} / ${r.max}</span>` +
         `<span class="st ${open ? 'open' : 'playing'}">${open ? '等待中' : '進行中'}</span>`;
       const b = document.createElement('button');

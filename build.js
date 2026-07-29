@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const ORDER = ['gl.js', 'textures.js', 'map.js', 'roster.js', 'rooms.js', 'nav.js', 'player.js', 'enemy.js', 'ui.js', 'render-gl.js', 'game.js', 'main-gl.js'];
+const ORDER = ['gl.js', 'textures.js', 'map.js', 'roster.js', 'rooms.js', 'net.js', 'nav.js', 'player.js', 'enemy.js', 'ui.js', 'render-gl.js', 'game.js', 'main-gl.js'];
 const src = path.join(__dirname, 'src');
 
 const code = ORDER.map((f) =>
