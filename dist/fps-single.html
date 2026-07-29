@@ -2334,7 +2334,7 @@ function createBots(roster, avoid) {
   return list;
 }
 
-const BUILD = '0729-g';
+const BUILD = '0729-h';
 
 const CSS = `
 .hud, .hud * { box-sizing: border-box; }
@@ -3727,14 +3727,29 @@ function createGame(canvas, renderer) {
     pushNetState(dt);
 
     if (debugOn) {
+      const seat = (t) => roster[t].map((x) => {
+        if (!x) return '[空]';
+        if (x.type === 'bot') return `[電腦:${x.name}]`;
+        return `[${x.cid === myCid() ? '★我' : x.cid}:${x.name}]`;
+      }).join('');
       const lines = [
-        `build ${BUILD}  ${net.online ? '線上' : '離線'}  ${isHost() ? '房主(我模擬電腦)' : '非房主(看房主廣播)'}`,
-        `我方 ${player.team}  電腦 ${bots.length}  遠端 ${remotes.size}`,
+        `build ${BUILD}  ${net.online ? '線上' : '離線'}  ` +
+          `${isHost() ? '房主' : '非房主'}  我=${myCid()}  房主=${net.room ? net.room.hostId : '-'}`,
+        `我隊 ${player.team}  電腦 ${bots.length}  遠端 ${remotes.size}`,
+        `席位 ct${seat('ct')}`,
+        `席位 t ${seat('t')}`,
       ];
+      for (const r of remotes.values()) {
+        const last = r.buf.length ? (clock - r.buf[r.buf.length - 1].t).toFixed(1) : '從未';
+        lines.push(
+          `遠端 ${r.cid}:${r.name}(${r.team}) 位置${r.pos.map((v) => v.toFixed(0)).join(',')} ` +
+          `上次更新${last}s 封包${r.buf.length}`
+        );
+      }
       for (const b of bots) {
         const d = Math.hypot(b.pos[0] - player.pos[0], b.pos[2] - player.pos[2]);
         lines.push(
-          `${b.name}(${b.team}) 距${d.toFixed(1)}m 血${Math.max(0, b.hp)} ` +
+          `電腦 ${b.name}(${b.team}) 距${d.toFixed(1)}m 血${Math.max(0, b.hp)} ` +
           `${b.alive ? '活' : '死'} moving${b.moving.toFixed(1)} ` +
           `${b.target ? '有目標' : '無目標'} 卡${b.stuck.toFixed(1)}`
         );
