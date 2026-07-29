@@ -7,7 +7,8 @@ export const RESPAWN_DELAY = 3;
 export const HEAD_MULT = 4;
 
 const SPEED = 3.4;
-const KEEP_DISTANCE = 6.5;
+const KEEP_DISTANCE = 4.5;
+const STRAFE_SPEED = 0.55;
 const SIGHT_RANGE = 46;
 const DEATH_TIME = 0.55;
 
@@ -45,6 +46,10 @@ export class Enemy {
     this.pathAt = 0;
     this.pathTimer = 0;
     this.pathGoal = null;
+    this.strafe = Math.random() < 0.5 ? -1 : 1;
+    this.strafeTimer = 0;
+    this.stuck = 0;
+    this.forcePath = 0;
   }
 
   get center() {
@@ -129,22 +134,52 @@ export class Enemy {
     while (diff < -Math.PI) diff += 6.283185;
     this.yaw += diff * Math.min(1, dt * 4);
 
-    const advancing = dist > KEEP_DISTANCE;
-    this.moving += ((advancing ? 1 : 0) - this.moving) * Math.min(1, dt * 6);
+    // 看不到目標時一定要移動，否則會卡在「已經夠近」但又沒視線的死角站著不動。
+    // 距離夠近且看得見時改成橫移，不要僵在原地。
+    const advancing = dist > KEEP_DISTANCE || !los;
+    this.moving += (1 - this.moving) * Math.min(1, dt * 6);
+    const before = [this.pos[0], this.pos[2]];
+
+    this.forcePath = Math.max(0, this.forcePath - dt);
+
     if (advancing) {
-      // 看得到就直線過去，看不到就走 A* 路徑，不然大地圖上會一直貼著牆
-      const flat = los && dist < 34
+      // 眼睛看得到不代表走得過去：中間可能隔著胸高掩體。
+      // 走直線卡住時改走 A*，導航網格會把矮牆算進去。
+      const flat = los && dist < 34 && this.forcePath <= 0
         ? vnorm([to[0], 0, to[2]])
         : this.steerAlongPath(dt, target.pos);
-      const before = [this.pos[0], this.pos[2]];
       if (flat) moveWithStep(
         this.pos, 0.4, ENEMY_SIZE[1],
         this.pos[0] + flat[0] * SPEED * dt,
         this.pos[2] + flat[2] * SPEED * dt
       );
-      this.pos[1] = groundHeight(this.pos, 0.4, this.pos[1] + STEP_HEIGHT);
-      const moved = Math.hypot(this.pos[0] - before[0], this.pos[2] - before[1]);
-      this.phase += moved * 5.2;
+    } else {
+      this.strafeTimer -= dt;
+      if (this.strafeTimer <= 0) {
+        this.strafe = Math.random() < 0.5 ? -1 : 1;
+        this.strafeTimer = 0.7 + Math.random() * 1.3;
+      }
+      const flat = vnorm([to[0], 0, to[2]]);
+      const side = [flat[2] * this.strafe, 0, -flat[0] * this.strafe];
+      moveWithStep(
+        this.pos, 0.4, ENEMY_SIZE[1],
+        this.pos[0] + side[0] * SPEED * STRAFE_SPEED * dt,
+        this.pos[2] + side[2] * SPEED * STRAFE_SPEED * dt
+      );
+    }
+
+    this.pos[1] = groundHeight(this.pos, 0.4, this.pos[1] + STEP_HEIGHT);
+    const moved = Math.hypot(this.pos[0] - before[0], this.pos[2] - before[1]);
+    this.phase += moved * 5.2;
+
+    if (advancing) {
+      if (moved < SPEED * dt * 0.35) this.stuck += dt;
+      else this.stuck = Math.max(0, this.stuck - dt * 2);
+      if (this.stuck > 0.45) {
+        this.forcePath = 2;
+        this.path = null;
+        this.stuck = 0;
+      }
     }
 
     if (los && dist < SIGHT_RANGE) {
