@@ -2664,7 +2664,7 @@ class UI {
           <div class="note" data-note></div>
         </div>
         <div class="foot">
-          <span>DUSTSTRIKE · BUILD 2026.07</span>
+          <span>DUSTSTRIKE · BUILD ${BUILD}</span>
           <span>WEBGL · SINGLE PLAYER</span>
         </div>
       </div>
@@ -2875,7 +2875,7 @@ class UI {
   }
 
   renderLobby(model) {
-    this.el.netdot.textContent = model.online ? '● 已連線' : '● 離線模式（只能單機）';
+    this.el.netdot.textContent = `${model.online ? '● 已連線' : '● 離線模式（只能單機）'} · build ${BUILD}`;
     this.el.netdot.className = `netdot ${model.online ? 'on' : 'off'}`;
     [...this.el.maps.children].forEach((b, i) => {
       b.classList.toggle('sel', model.maps[i].id === model.map);
