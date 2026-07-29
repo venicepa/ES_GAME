@@ -238,6 +238,7 @@ export function createGame(canvas, renderer) {
 
   function finish(title, sub) {
     state = 'over';
+    if (net.online && isHost()) net.send({ t: 'ended' });
     if (document.pointerLockElement === canvas) document.exitPointerLock();
     ui.overlay(title, sub, 'PLAY AGAIN', restart);
   }

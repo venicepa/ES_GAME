@@ -2519,7 +2519,8 @@ const CSS = `
   background: none; border: 1px solid rgba(232,196,119,.42); color: #e8c477;
   transition: background .16s;
 }
-.hud .browse .row button:hover { background: rgba(232,196,119,.18); }
+.hud .browse .row button:hover:not(:disabled) { background: rgba(232,196,119,.18); }
+.hud .browse .row button:disabled { opacity: .35; cursor: default; border-color: rgba(255,255,255,.18); color: #9a948a; }
 .hud .browse .empty {
   padding: 60px 14px; text-align: center; font-weight: 400;
   font-size: 13px; letter-spacing: .16em; opacity: .35;
@@ -2910,8 +2911,9 @@ class UI {
         `<span class="dim">${r.filled} / ${r.max}</span>` +
         `<span class="st ${open ? 'open' : 'playing'}">${open ? '等待中' : '進行中'}</span>`;
       const b = document.createElement('button');
-      b.textContent = '加入';
-      b.onclick = () => this.browseHandlers.onJoin(r);
+      b.textContent = open ? '加入' : '遊戲中';
+      b.disabled = !open;
+      if (open) b.onclick = () => this.browseHandlers.onJoin(r);
       row.appendChild(b);
       host.appendChild(row);
     }
@@ -3314,6 +3316,7 @@ function createGame(canvas, renderer) {
 
   function finish(title, sub) {
     state = 'over';
+    if (net.online && isHost()) net.send({ t: 'ended' });
     if (document.pointerLockElement === canvas) document.exitPointerLock();
     ui.overlay(title, sub, 'PLAY AGAIN', restart);
   }

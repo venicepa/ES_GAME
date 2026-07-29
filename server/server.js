@@ -183,6 +183,8 @@ wss.on('connection', (ws) => {
     if (m.t === 'join') {
       const r = rooms.get(m.id);
       if (!r) { send(ws, { t: 'error', msg: '房間已經不存在' }); return; }
+      // 進行中的房間不能加入：否則會被房主的下一次開始拖進別人的戰局
+      if (r.status === 'playing') { send(ws, { t: 'error', msg: '這間房正在遊戲中' }); return; }
       const free = firstFree(r.roster);
       if (!free) { send(ws, { t: 'error', msg: '房間已滿' }); return; }
       leaveRoom(ws);
@@ -206,6 +208,11 @@ wss.on('connection', (ws) => {
       const { team, index, action } = m;
       if (!room.roster[team] || index < 0 || index >= SLOTS) return;
       const slot = room.roster[team][index];
+      // 加電腦、移除電腦只有房主能做，換隊每個人都可以
+      if ((action === 'bot' || action === 'remove') && room.hostId !== ws.cid) {
+        send(ws, { t: 'error', msg: '只有房主可以增減電腦' });
+        return;
+      }
       if (action === 'join') {
         if (slot) return;
         const seat = seatFor(room.roster, ws.cid);
@@ -258,6 +265,13 @@ wss.on('connection', (ws) => {
       // 傷害交給被打的那一方套用：玩家自己算，電腦則由房主算
       if (m.kind === 'player') sendTo(room.id, m.cid, { t: 'hit', from: ws.cid, dmg: m.dmg });
       else sendTo(room.id, room.hostId, { t: 'hit', from: ws.cid, bot: m.bot, dmg: m.dmg });
+      return;
+    }
+
+    if (m.t === 'ended' && room.hostId === ws.cid) {
+      room.status = 'open';
+      broadcastRoom(room);
+      broadcastRooms();
       return;
     }
 
